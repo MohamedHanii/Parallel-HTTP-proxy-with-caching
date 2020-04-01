@@ -23,7 +23,7 @@ def simple_http_parsing_test_cases():
     #######################################
     case = "Parse HTTP method."
 
-    req_str = "GET / HTTP/1.0\r\nHost: www.google.edu\r\n\r\n"
+    req_str = "GET / HTTP/1.0\r\nHost: www.google.com\r\n\r\n"
     parsed = parse_http_request(client_addr, req_str)
 
     actual_value = parsed.method
@@ -36,10 +36,10 @@ def simple_http_parsing_test_cases():
     #######################################
     case = "Parse headers."
 
-    # "Host: google.edu" header is added to the request.
+    # "Host: google.com" header is added to the request.
     # note that the ":" is removed.
     actual_value = parsed.headers[0]        # note: headers is a list of lists
-    correct_value = ["Host", "www.google.edu"]
+    correct_value = ["Host", "www.google.com"]
     assert correct_value == actual_value,\
         f"[Line {lineno()}] [failed] {case}"\
         " Expected ( %s ) got ( %s )" % (correct_value, actual_value)
@@ -91,7 +91,7 @@ def simple_http_parsing_test_cases():
     case = "Add host header if a full HTTP path is used in request."
 
     actual_value = parsed.headers[0]
-    correct_value = ["Host", "www.google.edu"]
+    correct_value = ["Host", "www.google.com"]
     assert correct_value == actual_value,\
         f"[Line {lineno()}] [failed] {case}"\
         " Expected ( %s ) got ( %s )" % (correct_value, actual_value)
@@ -137,7 +137,7 @@ def simple_http_validation_test_cases():
     If your code is correct, calling this function will have no effect.
     """
     case = "Parse a valid HTTP request."
-    req_str = "GET / HTTP/1.0\r\nHost: www.google.edu\r\n\r\n"
+    req_str = "GET / HTTP/1.0\r\nHost: www.google.com\r\n\r\n"
 
     actual_value = check_http_request_validity(req_str)
     correct_value = HttpRequestState.GOOD
@@ -150,7 +150,7 @@ def simple_http_validation_test_cases():
     #######################################
 
     case = "Parse an invalid HTTP request (invalid method)"
-    req_str = "GOAT / HTTP/1.0\r\nHost: www.google.edu\r\n\r\n"
+    req_str = "GOAT / HTTP/1.0\r\nHost: www.google.com\r\n\r\n"
 
     actual_value = check_http_request_validity(req_str)
     correct_value = HttpRequestState.INVALID_INPUT
@@ -163,7 +163,7 @@ def simple_http_validation_test_cases():
     #######################################
 
     case = "Parse an invalid HTTP request (not-supported method)"
-    req_str = "HEAD / HTTP/1.0\r\nHost: www.google.edu\r\n\r\n"
+    req_str = "HEAD / HTTP/1.0\r\nHost: www.google.com\r\n\r\n"
 
     actual_value = check_http_request_validity(req_str)
     correct_value = HttpRequestState.NOT_SUPPORTED
@@ -200,7 +200,7 @@ def simple_http_validation_test_cases():
     #######################################
     #######################################
     case = "Parse an invalid HTTP request (no HTTP version)"
-    req_str = "HEAD / \r\nHost: www.google.edu\r\n\r\n"
+    req_str = "HEAD / \r\nHost: www.google.com\r\n\r\n"
 
     actual_value = check_http_request_validity(req_str)
     correct_value = HttpRequestState.INVALID_INPUT
@@ -212,7 +212,7 @@ def simple_http_validation_test_cases():
     #######################################
     #######################################
     case = "GET request with full URL in path returns GOOD"
-    req_str = "GET http://google.edu/ HTTP/1.0\r\n"
+    req_str = "GET http://google.com/ HTTP/1.0\r\n"
 
     actual_value = check_http_request_validity(req_str)
     correct_value = HttpRequestState.GOOD
@@ -225,7 +225,7 @@ def simple_http_validation_test_cases():
     #######################################
 
     case = "GET request with relative path and host header returns GOOD"
-    req_str = "GET / HTTP/1.0\r\nHost: google.edu\r\n\r\n"
+    req_str = "GET / HTTP/1.0\r\nHost: google.com\r\n\r\n"
 
     actual_value = check_http_request_validity(req_str)
     correct_value = HttpRequestState.GOOD
@@ -256,6 +256,7 @@ def main():
     # any of those functions.
     try:
         simple_http_validation_test_cases()
+        print("********************************")
         simple_http_parsing_test_cases()
     except AssertionError as e:
         print("Test case failed:\n", str(e))

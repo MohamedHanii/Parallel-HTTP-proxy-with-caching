@@ -56,11 +56,16 @@ class HttpRequestInfo(object):
         keeping it as a string in this stage is to ease
         debugging and testing.
         """
+        STR = self.method + " " + self.requested_path + " HTTP/1.0\r\n"
+        if self.headers:
+            for h in self.headers:
+                STR += h[0]+": "+h[1]+"\r\n"
+        STR += "\r\n"
 
-        print("*" * 50)
-        print("[to_http_string] Implement me!")
-        print("*" * 50)
-        return None
+        # print("*" * 50)
+        # print("[to_http_string] Implement me!")
+        # print("*" * 50)
+        return STR
 
     def to_byte_array(self, http_string):
         """
@@ -71,6 +76,7 @@ class HttpRequestInfo(object):
     def display(self):
         print(f"Client:", self.client_address_info)
         print(f"Method:", self.method)
+        print(f"Path: ",self.requested_path)
         print(f"Host:", self.requested_host)
         print(f"Port:", self.requested_port)
         stringified = [": ".join([k, v]) for (k, v) in self.headers]
@@ -120,7 +126,26 @@ def entry_point(proxy_port_number):
     inside it.
     """
 
-    setup_sockets(proxy_port_number)
+    Proxy_Socket = setup_sockets(proxy_port_number)
+    while True:
+        C_Socket,Addr = Proxy_Socket.accept()
+        message_list=[]
+        while True:
+            
+            request_msg = C_Socket.recvfrom(1024)
+            message_list.append(request_msg[0].decode('ascii'))
+
+            # Check if Double enter or The Connection Lost (length of received message equal to zero)
+            if request_msg[0]==b'':
+                break
+            elif request_msg[0] == b'\r\n':
+                message_list="".join(message_list)
+                SRC_ADDR = (Addr,proxy_port_number)
+                request_data = http_request_pipeline(SRC_ADDR,message_list)
+
+                break
+        
+        
     print("*" * 50)
     print("[entry_point] Implement me!")
     print("*" * 50)
@@ -135,24 +160,20 @@ def setup_sockets(proxy_port_number):
     Feel free to delete this function.
     """
     print("Starting HTTP proxy on port:", proxy_port_number)
-    P_Socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
 
     # when calling socket.listen() pass a number
     # that's larger than 10 to avoid rejecting
     # connections automatically.
+
+    P_Socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+    P_Socket.bind(("127.0.0.1",proxy_port_number))
+    P_Socket.listen(15)
+    
     print("*" * 50)
     print("[setup_sockets] Implement me!")
     print("*" * 50)
-    return None
+    return P_Socket
 
-
-def do_socket_logic():
-    """
-    Example function for some helper logic, in case you
-    want to be tidy and avoid stuffing the main function.
-    Feel free to delete this function.
-    """
-    pass
 
 
 def http_request_pipeline(source_addr, http_raw_data):
@@ -169,15 +190,26 @@ def http_request_pipeline(source_addr, http_raw_data):
     free to change its content
     """
     # Parse HTTP request
+
+    # http_raw_data = parsing_http_raw_data(http_raw_data)
+    # print(http_raw_data)
+    
     validity = check_http_request_validity(http_raw_data)
+    print("CHECK HERE ",validity)
+    if validity != HttpRequestState.GOOD:
+        pass
+    else:
+        HTTP_OBJ = parse_http_request(source_addr,http_raw_data)
     # Return error if needed, then:
     # parse_http_request()
     # sanitize_http_request()
     # Validate, sanitize, return Http object.
+    request_byte = sanitize_http_request(HTTP_OBJ)
+
     print("*" * 50)
     print("[http_request_pipeline] Implement me!")
     print("*" * 50)
-    return None
+    return request_byte
 
 
 def parse_http_request(source_addr, http_raw_data):
@@ -185,11 +217,12 @@ def parse_http_request(source_addr, http_raw_data):
     This function parses a "valid" HTTP request into an HttpRequestInfo
     object.
     """
-    print("*" * 50)
-    print("[parse_http_request] Implement me!")
-    print("*" * 50)
+    http_raw_data = parsing_http_raw_data(http_raw_data)
+    # print("*" * 50)
+    # print("[parse_http_request] Implement me!")
+    # print("*" * 50)
     # Replace this line with the correct values.
-    ret = HttpRequestInfo(None, None, None, None, None, None)
+    ret = HttpRequestInfo(source_addr, http_raw_data["method"], http_raw_data["host"],http_raw_data["port"],http_raw_data["path"],http_raw_data["header"])
     return ret
 
 
@@ -199,11 +232,32 @@ def check_http_request_validity(http_raw_data) -> HttpRequestState:
     returns:
     One of values in HttpRequestState
     """
-    print("*" * 50)
-    print("[check_http_request_validity] Implement me!")
-    print("*" * 50)
+    http_raw_data = parsing_http_raw_data(http_raw_data)
+
+    if http_raw_data["host"]=="":
+        return HttpRequestState.INVALID_INPUT
+
+    for header in http_raw_data["header"]:
+        if header != [""] and len(header)==1:
+            return HttpRequestState.INVALID_INPUT
+            
+    if http_raw_data["version"] != "HTTP/1.0" and "HTTP/1.1":
+        return HttpRequestState.INVALID_INPUT
+
+  
+    if http_raw_data["method"] in ['PUT','HEAD','POST']:
+        return HttpRequestState.NOT_SUPPORTED
+
+    elif http_raw_data["method"] not in ["GET"]:
+        return HttpRequestState.INVALID_INPUT
+    
+
+
+    # print("*" * 50)
+    # print("[check_http_request_validity] Implement me!")
+    # print("*" * 50)
     # return HttpRequestState.GOOD (for example)
-    return HttpRequestState.PLACEHOLDER
+    return HttpRequestState.GOOD
 
 
 def sanitize_http_request(request_info: HttpRequestInfo):
@@ -217,7 +271,56 @@ def sanitize_http_request(request_info: HttpRequestInfo):
     print("*" * 50)
     print("[sanitize_http_request] Implement me!")
     print("*" * 50)
+    http_string=request_info.to_http_string()
+    return request_info.to_byte_array(http_string)
 
+def parsing_http_raw_data(http_raw_data):
+    """
+    Parse http_raw_data 
+
+    """
+    host=""
+    http_raw_data = http_raw_data.split("\r\n")[:-1]
+    request_line = http_raw_data[0].split(" ")
+    header_lines = http_raw_data[1:]
+    url = request_line[1]
+
+    headers=[]
+    for header in header_lines:
+        if header.startswith("Host: "):
+            host=header.split(": ")[1]
+        headers.append(header.split(": "))
+
+    if url.startswith("http"):
+        _,_,url = url.partition("://")
+
+    if not url.startswith('/'):
+        host = url[0]
+        path = "/"
+    else:
+        path = url
+
+
+    if ':'in path:
+        port = path.split(":")[1]
+    else:
+        port = "80"
+    http_version = request_line[2]
+
+    if len(headers)>1 and headers[-1]==['']:
+        headers= headers[:-1]
+
+
+    request_data ={
+        "method"    : request_line[0],
+        "path"      : path,
+        "version"   : http_version,
+        "host"      : host,
+        "port"      : port,
+        "header"    : headers
+    } 
+
+    return request_data
 
 #######################################
 # Leave the code below as is.
