@@ -57,14 +57,15 @@ class HttpRequestInfo(object):
         debugging and testing.
         """
         STR = self.method + " " + self.requested_path + " HTTP/1.0\r\n"
+        STR += "Host: "+self.requested_host+"\r\n"
         if self.headers:
-            for h in self.headers:
+            for h in self.headers[1:]:
                 STR += h[0]+": "+h[1]+"\r\n"
         STR += "\r\n"
 
-        # print("*" * 50)
-        # print("[to_http_string] Implement me!")
-        # print("*" * 50)
+        print("*" * 50)
+        print("[to_http_string] Implement me!")
+        print("*" * 50)
         return STR
 
     def to_byte_array(self, http_string):
@@ -197,13 +198,15 @@ def http_request_pipeline(source_addr, http_raw_data):
     validity = check_http_request_validity(http_raw_data)
     print("CHECK HERE ",validity)
     if validity != HttpRequestState.GOOD:
-        pass
+        exit(0)
+        
     else:
         HTTP_OBJ = parse_http_request(source_addr,http_raw_data)
     # Return error if needed, then:
     # parse_http_request()
     # sanitize_http_request()
     # Validate, sanitize, return Http object.
+    print(HTTP_OBJ.to_http_string())
     request_byte = sanitize_http_request(HTTP_OBJ)
 
     print("*" * 50)
@@ -218,9 +221,9 @@ def parse_http_request(source_addr, http_raw_data):
     object.
     """
     http_raw_data = parsing_http_raw_data(http_raw_data)
-    # print("*" * 50)
-    # print("[parse_http_request] Implement me!")
-    # print("*" * 50)
+    print("*" * 50)
+    print("[parse_http_request] Implement me!")
+    print("*" * 50)
     # Replace this line with the correct values.
     ret = HttpRequestInfo(source_addr, http_raw_data["method"], http_raw_data["host"],http_raw_data["port"],http_raw_data["path"],http_raw_data["header"])
     return ret
@@ -233,15 +236,18 @@ def check_http_request_validity(http_raw_data) -> HttpRequestState:
     One of values in HttpRequestState
     """
     http_raw_data = parsing_http_raw_data(http_raw_data)
-
+    print(http_raw_data)
     if http_raw_data["host"]=="":
+        print("1")
         return HttpRequestState.INVALID_INPUT
 
     for header in http_raw_data["header"]:
         if header != [""] and len(header)==1:
+            print("2")
             return HttpRequestState.INVALID_INPUT
             
-    if http_raw_data["version"] != "HTTP/1.0" and "HTTP/1.1":
+    if http_raw_data["version"] not in ["HTTP/1.0", "HTTP/1.1"]:
+        print("3")
         return HttpRequestState.INVALID_INPUT
 
   
@@ -249,13 +255,14 @@ def check_http_request_validity(http_raw_data) -> HttpRequestState:
         return HttpRequestState.NOT_SUPPORTED
 
     elif http_raw_data["method"] not in ["GET"]:
+        print("4")
         return HttpRequestState.INVALID_INPUT
     
 
 
-    # print("*" * 50)
-    # print("[check_http_request_validity] Implement me!")
-    # print("*" * 50)
+    print("*" * 50)
+    print("[check_http_request_validity] Implement me!")
+    print("*" * 50)
     # return HttpRequestState.GOOD (for example)
     return HttpRequestState.GOOD
 
@@ -272,6 +279,7 @@ def sanitize_http_request(request_info: HttpRequestInfo):
     print("[sanitize_http_request] Implement me!")
     print("*" * 50)
     http_string=request_info.to_http_string()
+    print(http_string)
     return request_info.to_byte_array(http_string)
 
 def parsing_http_raw_data(http_raw_data):
@@ -284,7 +292,6 @@ def parsing_http_raw_data(http_raw_data):
     request_line = http_raw_data[0].split(" ")
     header_lines = http_raw_data[1:]
     url = request_line[1]
-
     headers=[]
     for header in header_lines:
         if header.startswith("Host: "):
@@ -295,8 +302,14 @@ def parsing_http_raw_data(http_raw_data):
         _,_,url = url.partition("://")
 
     if not url.startswith('/'):
-        host = url[0]
-        path = "/"
+        
+        if '/' in url:
+            host,path = url.split("/")
+            path= "/"+path 
+        else:
+            host = url
+            path = "/"
+
     else:
         path = url
 
@@ -309,6 +322,9 @@ def parsing_http_raw_data(http_raw_data):
 
     if len(headers)>1 and headers[-1]==['']:
         headers= headers[:-1]
+    elif len(headers)==1 and headers[-1]==['']:
+        headers.pop()
+        
 
 
     request_data ={
