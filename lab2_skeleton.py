@@ -143,7 +143,8 @@ def entry_point(proxy_port_number):
                 message_list="".join(message_list)
                 SRC_ADDR = (Addr,proxy_port_number)
                 request_data = http_request_pipeline(SRC_ADDR,message_list)
-
+                response_proxy(request_data)
+                exit(0)
                 break
         
         
@@ -152,7 +153,28 @@ def entry_point(proxy_port_number):
     print("*" * 50)
     return None
 
+def response_proxy(request_data):
+    print("**********************NOW ENTERING SENDING**************")
+    P_Socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+    IP = socket.gethostbyname(request_data.requested_host)
+    print(IP)
+    P_Socket.connect((IP, int(request_data.requested_port)))
+    print("Connecting Sucessfully")
+    P_Socket.send(request_data.to_byte_array(request_data.to_http_string()))
+    print("Send Successfully")
+    while True:
+        full_msg = ''
+        while True:
+            msg = P_Socket.recv(1024)
+            if len(msg) <= 0:
+                break
+            full_msg += msg.decode("utf-8")
 
+        if len(full_msg) > 0:
+            print(full_msg)
+            break
+    exit(0)
+    pass
 def setup_sockets(proxy_port_number):
     """
     Socket logic MUST NOT be written in the any
@@ -206,7 +228,7 @@ def http_request_pipeline(source_addr, http_raw_data):
     # parse_http_request()
     # sanitize_http_request()
     # Validate, sanitize, return Http object.
-    print(HTTP_OBJ.to_http_string())
+
     request_byte = sanitize_http_request(HTTP_OBJ)
 
     print("*" * 50)
@@ -225,7 +247,8 @@ def parse_http_request(source_addr, http_raw_data):
     print("[parse_http_request] Implement me!")
     print("*" * 50)
     # Replace this line with the correct values.
-    ret = HttpRequestInfo(source_addr, http_raw_data["method"], http_raw_data["host"],http_raw_data["port"],http_raw_data["path"],http_raw_data["header"])
+    ret = HttpRequestInfo(source_addr, http_raw_data["method"], http_raw_data["host"],http_raw_data["port"],
+                                                                                    http_raw_data["path"],http_raw_data["header"])
     return ret
 
 
@@ -280,7 +303,7 @@ def sanitize_http_request(request_info: HttpRequestInfo):
     print("*" * 50)
     http_string=request_info.to_http_string()
     print(http_string)
-    return request_info.to_byte_array(http_string)
+    return request_info
 
 def parsing_http_raw_data(http_raw_data):
     """
