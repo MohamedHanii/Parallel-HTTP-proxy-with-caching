@@ -4,6 +4,8 @@ import os
 import enum
 import socket
 
+from email.utils import formatdate
+
 class HttpRequestInfo(object):
     """
     Represents a HTTP request information
@@ -95,7 +97,13 @@ class HttpErrorResponse(object):
 
     def to_http_string(self):
         """ Same as above """
-        pass
+        STR = "HTTP/1.0 "+str(self.code) +" "+self.message+"\r\n"
+        STR += "Date: " + formatdate(timeval=None,
+                                     localtime=False, usegmt=True)+"\r\n"
+        STR += "Connection: Closed"+"\r\n"
+        STR += "\r\n"
+        
+        return STR
 
     def to_byte_array(self, http_string):
         """
@@ -126,7 +134,7 @@ def entry_point(proxy_port_number):
     but feel free to modify the code
     inside it.
     """
-
+    cache = {}
     Proxy_Socket = setup_sockets(proxy_port_number)
     while True:
         C_Socket,Addr = Proxy_Socket.accept()
@@ -134,7 +142,11 @@ def entry_point(proxy_port_number):
         while True:
             
             request_msg = C_Socket.recvfrom(1024)
-            message_list.append(request_msg[0].decode('ascii'))
+            try:
+                message_list.append(request_msg[0].decode('UTF-8'))
+            except:
+                C_Socket.close()
+                break
 
             # Check if Double enter or The Connection Lost (length of received message equal to zero)
             if request_msg[0]==b'':
@@ -142,9 +154,23 @@ def entry_point(proxy_port_number):
             elif request_msg[0] == b'\r\n':
                 message_list="".join(message_list)
                 SRC_ADDR = (Addr,proxy_port_number)
+                
                 request_data = http_request_pipeline(SRC_ADDR,message_list)
-                response_proxy(request_data)
-                exit(0)
+                if isinstance(request_data,HttpRequestInfo):
+                    key = request_data.method+" "+request_data.requested_host+"/"+request_data.requested_path+":"+request_data.requested_port
+                    if cache.get(key,0):
+                        print("***FROM CACHE***")
+                        rev_data = cache.get(key)
+                    else:
+                        rev_data = response_proxy(request_data)
+                        rev_data = rev_data.encode('UTF-8')
+                        cache[key]= rev_data
+                else: 
+                    rev_data = request_data.to_http_string()
+                    rev_data = request_data.to_byte_array(rev_data)
+
+                C_Socket.send(rev_data)
+                C_Socket.close()
                 break
         
         
@@ -154,27 +180,38 @@ def entry_point(proxy_port_number):
     return None
 
 def response_proxy(request_data):
-    print("**********************NOW ENTERING SENDING**************")
-    P_Socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-    IP = socket.gethostbyname(request_data.requested_host)
-    print(IP)
-    P_Socket.connect((IP, int(request_data.requested_port)))
-    print("Connecting Sucessfully")
-    P_Socket.send(request_data.to_byte_array(request_data.to_http_string()))
-    print("Send Successfully")
-    while True:
-        full_msg = ''
-        while True:
-            msg = P_Socket.recv(1024)
-            if len(msg) <= 0:
-                break
-            full_msg += msg.decode("utf-8")
 
-        if len(full_msg) > 0:
-            print(full_msg)
-            break
-    exit(0)
-    pass
+    """
+    Sending to Request Server
+     
+    """
+    print("************** NOW ENTERING SENDING **************")
+    P_Socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+    try:
+        IP = socket.gethostbyname(request_data.requested_host)
+        print(IP)
+        P_Socket.connect((IP, int(request_data.requested_port)))
+        print("************** Connecting Sucessfully **************")
+        P_Socket.send(request_data.to_byte_array(request_data.to_http_string()))
+        print("************** Send Successfully **************")
+        while True:
+            full_msg = ''
+            while True:
+                msg = P_Socket.recv(1024)
+                if len(msg) <= 0:
+                    break
+                full_msg += msg.decode("utf-8")
+
+            if len(full_msg) > 0:
+                # print(full_msg)
+                break
+    except:
+        full_msg = HttpErrorResponse(404,"Page Not Found").to_http_string()
+    P_Socket.close()
+    return full_msg
+
+
+
 def setup_sockets(proxy_port_number):
     """
     Socket logic MUST NOT be written in the any
@@ -219,9 +256,17 @@ def http_request_pipeline(source_addr, http_raw_data):
     
     validity = check_http_request_validity(http_raw_data)
     print("CHECK HERE ",validity)
+
     if validity != HttpRequestState.GOOD:
-        exit(0)
-        
+        if validity == HttpRequestState.NOT_SUPPORTED:
+            code = 501
+            message = "Not Implemented"
+        else:
+            code = 400
+            message = "Bad Request"
+        err = HttpErrorResponse(code, message)
+        return err
+
     else:
         HTTP_OBJ = parse_http_request(source_addr,http_raw_data)
     # Return error if needed, then:
@@ -302,7 +347,8 @@ def sanitize_http_request(request_info: HttpRequestInfo):
     print("[sanitize_http_request] Implement me!")
     print("*" * 50)
     http_string=request_info.to_http_string()
-    print(http_string)
+  
+
     return request_info
 
 def parsing_http_raw_data(http_raw_data):
@@ -311,53 +357,63 @@ def parsing_http_raw_data(http_raw_data):
 
     """
     host=""
-    http_raw_data = http_raw_data.split("\r\n")[:-1]
-    request_line = http_raw_data[0].split(" ")
-    header_lines = http_raw_data[1:]
-    url = request_line[1]
-    headers=[]
-    for header in header_lines:
-        if header.startswith("Host: "):
-            host=header.split(": ")[1]
-        headers.append(header.split(": "))
+    try:
+        http_raw_data = http_raw_data.split("\r\n")[:-1]
+        request_line = http_raw_data[0].split(" ")
+        header_lines = http_raw_data[1:]
+        url = request_line[1]
+        headers=[]
+        for header in header_lines:
+            if header.startswith("Host: "):
+                host=header.split(": ")[1]
+            headers.append(header.split(": "))
 
-    if url.startswith("http"):
-        _,_,url = url.partition("://")
+        if url.startswith("http"):
+            _,_,url = url.partition("://")
 
-    if not url.startswith('/'):
-        
-        if '/' in url:
-            host,path = url.split("/")
-            path= "/"+path 
+        if not url.startswith('/'):
+            
+            if '/' in url:
+                host,path = url.split("/")
+                path= "/"+path 
+            else:
+                host = url
+                path = "/"
+
         else:
-            host = url
-            path = "/"
-
-    else:
-        path = url
+            path = url
 
 
-    if ':'in path:
-        port = path.split(":")[1]
-    else:
-        port = "80"
-    http_version = request_line[2]
+        if ':'in host:
+            host,port = host.split(":")
+        else:
+            port = "80"
+        http_version = request_line[2]
 
-    if len(headers)>1 and headers[-1]==['']:
-        headers= headers[:-1]
-    elif len(headers)==1 and headers[-1]==['']:
-        headers.pop()
-        
+        if len(headers)>1 and headers[-1]==['']:
+            headers= headers[:-1]
+        elif len(headers)==1 and headers[-1]==['']:
+            headers.pop()
+            
 
 
-    request_data ={
-        "method"    : request_line[0],
-        "path"      : path,
-        "version"   : http_version,
-        "host"      : host,
-        "port"      : port,
-        "header"    : headers
-    } 
+        request_data ={
+            "method"    : request_line[0],
+            "path"      : path,
+            "version"   : http_version,
+            "host"      : host,
+            "port"      : port,
+            "header"    : headers
+        }
+    except: 
+        request_data={
+            "method"    : "",
+            "path"      : "",
+            "version"   : "",
+            "host"      : "",
+            "port"      : "",
+            "header"    : ""                
+        }
 
     return request_data
 
