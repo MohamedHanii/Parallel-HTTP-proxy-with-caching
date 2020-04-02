@@ -374,7 +374,7 @@ def parsing_http_raw_data(http_raw_data):
         if not url.startswith('/'):
             
             if '/' in url:
-                host,path = url.split("/")
+                host,path = url.split("/",1)
                 path= "/"+path 
             else:
                 host = url
