@@ -3,6 +3,8 @@ import sys
 import os
 import enum
 import socket
+from _thread import *
+import time
 
 from email.utils import formatdate
 
@@ -136,48 +138,53 @@ def entry_point(proxy_port_number):
     """
     cache = {}
     Proxy_Socket = setup_sockets(proxy_port_number)
+
     while True:
         C_Socket,Addr = Proxy_Socket.accept()
-        message_list=[]
-        while True:
-            
-            request_msg = C_Socket.recvfrom(1024)
-            try:
-                message_list.append(request_msg[0].decode('UTF-8'))
-            except:
-                C_Socket.close()
-                break
-
-            # Check if Double enter or The Connection Lost (length of received message equal to zero)
-            if request_msg[0]==b'':
-                break
-            elif request_msg[0] == b'\r\n':
-                message_list="".join(message_list)
-                SRC_ADDR = (Addr,proxy_port_number)
-                
-                request_data = http_request_pipeline(SRC_ADDR,message_list)
-                if isinstance(request_data,HttpRequestInfo):
-                    key = request_data.method+" "+request_data.requested_host+"/"+request_data.requested_path+":"+request_data.requested_port
-                    if cache.get(key,0):
-                        print("***FROM CACHE***")
-                        rev_data = cache.get(key)
-                    else:
-                        rev_data = response_proxy(request_data)
-                        rev_data = rev_data.encode('UTF-8')
-                        cache[key]= rev_data
-                else: 
-                    rev_data = request_data.to_http_string()
-                    rev_data = request_data.to_byte_array(rev_data)
-
-                C_Socket.send(rev_data)
-                C_Socket.close()
-                break
-        
+        start_new_thread(new_client,(C_Socket,cache,Addr))
         
     print("*" * 50)
     print("[entry_point] Implement me!")
     print("*" * 50)
     return None
+
+def new_client(C_Socket,cache,Addr):
+
+
+    message_list=[]
+    while True:
+        request_msg = C_Socket.recvfrom(1024)
+        try:
+            message_list.append(request_msg[0].decode('UTF-8'))
+        except:
+            C_Socket.close()
+            break
+
+        # Check if Double enter or The Connection Lost (length of received message equal to zero)
+        if request_msg[0]==b'':
+            break
+        elif request_msg[0] == b'\r\n':
+            message_list="".join(message_list)
+            SRC_ADDR = Addr
+            
+            request_data = http_request_pipeline(SRC_ADDR,message_list)
+            if isinstance(request_data,HttpRequestInfo):
+                key = request_data.method+" "+request_data.requested_host+"/"+request_data.requested_path+":"+request_data.requested_port
+                if cache.get(key,0):
+                    print("***FROM CACHE***")
+                    rev_data = cache.get(key)
+                else:
+                    rev_data = response_proxy(request_data)
+                    rev_data = rev_data.encode('UTF-8')
+                    cache[key]= rev_data
+            else: 
+                rev_data = request_data.to_http_string()
+                rev_data = request_data.to_byte_array(rev_data)
+
+            C_Socket.send(rev_data)
+            C_Socket.close()
+            break
+
 
 def response_proxy(request_data):
 
@@ -314,15 +321,13 @@ def check_http_request_validity(http_raw_data) -> HttpRequestState:
             print("2")
             return HttpRequestState.INVALID_INPUT
             
-    if http_raw_data["version"] not in ["HTTP/1.0", "HTTP/1.1"]:
+    if http_raw_data["version"].lower() not in ["http/1.0", "http/1.1"]:
         print("3")
         return HttpRequestState.INVALID_INPUT
-
-  
-    if http_raw_data["method"] in ['PUT','HEAD','POST']:
+    if http_raw_data["method"].lower() in ['put','head','post']:
         return HttpRequestState.NOT_SUPPORTED
 
-    elif http_raw_data["method"] not in ["GET"]:
+    elif http_raw_data["method"].lower() not in ["get"]:
         print("4")
         return HttpRequestState.INVALID_INPUT
     
@@ -332,6 +337,7 @@ def check_http_request_validity(http_raw_data) -> HttpRequestState:
     print("[check_http_request_validity] Implement me!")
     print("*" * 50)
     # return HttpRequestState.GOOD (for example)
+
     return HttpRequestState.GOOD
 
 
@@ -346,8 +352,8 @@ def sanitize_http_request(request_info: HttpRequestInfo):
     print("*" * 50)
     print("[sanitize_http_request] Implement me!")
     print("*" * 50)
-    http_string=request_info.to_http_string()
-  
+    http_string = request_info.to_http_string()
+    pass
 
     return request_info
 
@@ -360,6 +366,8 @@ def parsing_http_raw_data(http_raw_data):
     try:
         http_raw_data = http_raw_data.split("\r\n")[:-1]
         request_line = http_raw_data[0].split(" ")
+        if len(request_line)>3:
+            raise ValueError
         header_lines = http_raw_data[1:]
         url = request_line[1]
         headers=[]
